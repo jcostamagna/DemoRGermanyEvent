@@ -1,26 +1,322 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_document: default
+  html_notebook: default
+  pdf_document: default
 ---
 
 First we install the required packages.
 ```{r message=FALSE, warning=FALSE, echo=FALSE}
 # Install packages
-install.packages(c("RPostgreSQL"), quiet = TRUE)
+#install.packages(c("RPostgreSQL"), quiet = TRUE)
 ```
 
+Second we load libraries we need
+```{r message=FALSE}
+require("RPostgreSQL")
+require("knitr")
+require("ggplot2")
+require(psych)
+require(dplyr)
+```
+
+Check if we can connect to the db and if sessions table does exist (some sort of validation!).
+```{r}
+# loads the PostgreSQL driver
+drv <- dbDriver("PostgreSQL")
+# creates a connection to the postgres database
+# note that "connection" will be used later in each connection to the database
+connection <- dbConnect(drv, dbname = "postgres", password = "1way.Street",
+                 host = "localhost", port = 5432,
+                 user = "postgres")
 
 
 
+# check for the cartable
+dbExistsTable(connection, "session")
+# TRUE
+```
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+Get list of sessions and their lengths both in terms `length(sessions`  of time and number of measurements.
 
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+```{python}
+print 5
+```
+
 
 ```{r}
-plot(cars)
+query <- "SELECT id,e1.start,e1.finish-e1.start as duration,e2.count_values
+FROM session AS e1
+LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS count_values
+    FROM datavr
+    WHERE e1.id=datavr.idsession)
+    AS e2
+ON TRUE;"
+sessions <- dbGetQuery(connection, query)
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).
+```{r kable}
+kable(sessions)
+```
+
+```{r get-session-data}
+session_id = 390
+query <- "SELECT datavr.*,datasteering.steering,datasteering.accelerator,datasteering.slider1 AS brake FROM
+datasteering 
+JOIN datavr ON datasteering.time=datavr.time AND datasteering.idsession=datavr.idsession
+WHERE datasteering.idsession=$1;"
+session_data <- dbGetQuery(connection, query,c(session_id))
+```
+
+```{r}
+summary(session_data)
+```
+
+```{r}
+session_data$steering[order(session_data$steering)[1:5]]
+order(session_data$steering)[1:5]
+```
+
+```{r}
+#session_data_filtered <- session_data %>%
+#  filter(steering>-1001,accelerator>-1001,slider1>-1001)
+
+session_data_filtered <- session_data %>%
+  filter(steering>-1001,accelerator>-1001)
+
+session_data_filtered$longitudinal = (-session_data_filtered$accelerator+1000)-(-session_data_filtered$brake+1000)
+```
+
+```{r}
+summary(session_data_filtered)
+```
+
+
+Plot histogram of Gas pedal
+```{r}
+ggplot(data=session_data_filtered, aes(x="k", y=session_data_filtered$steering)) + geom_boxplot()
+```
+
+
+Plot histogram of Brake pedal
+```{r}
+ggplot(data=session_data_filtered, aes(session_data_filtered$brake)) + geom_density()
+```
+
+Plot histogram of Steering
+```{r}
+ggplot(data=session_data_filtered, aes(session_data_filtered$steering)) + geom_density()
+```
+
+```{r}
+ggplot(session_data_filtered, aes(x=steering, y=-accelerator)) +
+    geom_point(shape=1)      # Use hollow circles
+```
+
+
+```{r}
+ggplot(session_data_filtered, aes(x=steering, y=brake)) +
+    geom_point(shape=1)      # Use hollow circles
+```
+
+
+```{r}
+ggplot(session_data_filtered, aes(x=steering, y=longitudinal)) +
+    geom_point(shape=1)      # Use hollow circles
+```
+
+Heatmap of X-Y of headset
+```{r}
+k <- with(session_data_filtered,MASS::kde2d(-rotationy,rotationx,n=50,lims=c(-0.2, 0.6, -0.1, 0.3)))
+filled.contour(k,color = terrain.colors)
+```
+
+```{r}
+m <- ggplot(session_data_filtered, aes(x = -rotationy, y = rotationx)) +
+ geom_point()
+m + geom_density_2d()
+```
+
+
+
+
+
+
+```{r}
+m <- ggplot(session_data_filtered, aes(x = -rotationy, y = rotationx))
+m + stat_density_2d(geom = "raster", aes(fill = ..density..), contour = FALSE) +
+  scale_fill_gradientn(colours = terrain.colors(10))
+```
+
+
+
+
+
+```{r}
+library(pspline)
+t1 = predict(sm.spline(session_data_filtered$time, session_data_filtered$steering), session_data_filtered$time, 1)
+```
+
+```{r get-position-data}
+session_id = 392
+query <- 'SELECT * FROM public."WorldSpeed" WHERE idSession=$1;'
+postion_data <- dbGetQuery(connection, query,c(session_id))
+```
+
+```{r}
+summary(postion_data)
+```
+
+```{r}
+ggplot(postion_data, aes(x=posx, y=posy, color=speed)) +
+      geom_point(shape=16, size = 0.75)  + scale_x_continuous(limits = c(-750, 750)) + scale_color_gradient(low="blue", high="red")
+ggsave("positionAndSpeed.png", width = 7, height = 5)
+```
+
+```{r}
+ggplot(postion_data, aes(x=posx, y=posy, color=speed)) +
+      geom_path(shape=16, size = 1.5)  + scale_x_continuous(limits = c(-750, 750)) + scale_color_gradient(low="blue", high="red")
+```
+
+
+```{r get-session-data2}
+normalizar <- function(x){
+  returnValue(x/65535)
+}
+
+session_id = 392
+query <- "SELECT datavr.*,datasteering.steering,datasteering.accelerator,datasteering.brake FROM
+datasteering 
+JOIN datavr ON datasteering.time=datavr.time AND datasteering.idsession=datavr.idsession
+WHERE datasteering.idsession=$1;"
+session_data2 <- dbGetQuery(connection, query,c(session_id))
+
+data_scale <- session_data2 %>% mutate_each_(funs(scale(.) %>% as.vector), 
+                             vars=c("positionx","positiony", "positionz", "rotationx", "rotationy", "rotationz"))
+data_scale2 <- session_data2 %>% mutate_each_(funs(normalizar(.) %>% as.vector), 
+                             vars=c("accelerator","steering", "brake"))
+#apply(session_data2[,c('accelerator','steering', 'brake')], 1, function(x) x/64555 )
+```
+
+```{r}
+summary(data_scale)
+quantile(data_scale$positionx, 0.25)
+```
+
+
+```{r}
+ggplot(data=data_scale2, aes(data_scale2$accelerator)) + geom_histogram(bins = 100)
+```
+
+
+```{r}
+ggplot(data_scale2, aes(x=steering, y=-accelerator)) +
+    geom_point(shape=1)      # Use hollow circles
+```
+
+
+```{r get-car-data}
+  query <- 'SELECT * FROM public."FullCarData" WHERE idSession=$1;'
+  session_car_data <- dbGetQuery(connection, query,c(session_id))
+```
+
+
+```{r}
+summary(session_car_data)
+```
+
+```{r get-car-data_full}
+  query <- 'SELECT * FROM public."FullCarData" JOIN public."WorldSpeed" USING ("time", idsession, speed) JOIN public."LapNumber1" USING ("time", idsession) WHERE idSession=$1;'
+  session_car_data <- dbGetQuery(connection, query,c(392))
+  #session_car_data <- head(session_car_data,6763)
+```
+
+
+```{r}
+summary(session_car_data)
+```
+
+
+```{r}
+session_car_data_sector1 <- subset(session_car_data, distance > 500 & distance <= 900)
+summary(session_car_data_sector1)
+```
+
+
+```{r}
+ggplot(session_car_data_sector1, aes(x=posx, y=posy, color=speed)) +
+      geom_point(shape=16, size = 0.75)  + scale_x_continuous(limits = c(-750, 750)) + scale_y_continuous(limits = c(-40, 10))  + scale_color_gradient(low="blue", high="red")
+ggsave("positionAndSpeedSector1.png", width = 7, height = 5)
+```
+
+```{r}
+ggplot(session_car_data_sector1, aes(x=distance, y=speed ,color=idsession)) +
+       geom_path(size=1.0)  + scale_color_gradient(low="white", high="blue")
+ggsave("distanceSpeed.png", width = 7, height = 5)
+```
+
+```{r}
+ggplot(session_car_data_sector1, aes(x=distance, y=brake)) + 
+      geom_line(size=1.0)  + scale_color_gradient(low="white", high="blue")
+ggsave("distanceBrake.png", width = 7, height = 5)
+```
+
+```{r}
+ggplot(session_car_data_sector1, aes(x=distance, y=throttle)) + 
+       geom_line()  + scale_color_gradient(low="white", high="blue")
+ggsave("distanceThrottle.png", width = 7, height = 5)
+```
+
+
+```{r}
+ggplot(session_car_data_sector1, aes(x=distance, y=steering)) + 
+      geom_line()  + scale_color_gradient(low="white", high="blue")
+ggsave("distanceSteering.png", width = 7, height = 5)
+```
+
+```{r}
+ggplot(session_car_data_sector1, aes(x=speed, y=rpm)) + 
+      geom_point(shape=1)  + scale_color_gradient(low="white", high="blue")
+```
+
+
+```{r}
+session_car_data_filtered2 <- subset(session_car_data, distance < 10 )
+ggplot(session_car_data_filtered2, aes(x=posx, y=posy, color=speed)) +
+      geom_point(shape=1)  + scale_x_continuous(limits = c(-750, 750)) +  scale_y_continuous(limits = c(-40, 10)) + scale_color_gradient(low="white", high="blue")
+```
+
+
+
+```{r}
+ggplot(tmp, aes(x=distance, y=speed)) +
+      geom_point(shape=1)  + scale_color_gradient(low="white", high="blue")
+```
+
+
+```{r}
+ggplot(session_car_data_sector1, aes( throttle)) +
+      geom_density()
+ggsave("ThrottleDensity.png", width = 7, height = 5)
+```
+
+```{r}
+ggplot(session_car_data_sector1, aes( rpm)) +
+      geom_density()
+ggsave("RpmDensity.png", width = 7, height = 5)
+```
+
+```{r get-time}
+  query <- 'SELECT * FROM public."FullCarData" JOIN public."WorldSpeed" USING ("time", idsession, speed) JOIN public."LapNumber1" USING ("time", idsession) WHERE idSession=$1;'
+  session_car_data2 <- dbGetQuery(connection, query,c(392))
+```
+
+```{r}
+summary(session_car_data2)
+scds <- max(session_car_data2$currenttime,na.rm=TRUE)
+
+seconds_to_period(scds)
+```
