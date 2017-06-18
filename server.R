@@ -26,7 +26,7 @@ connection <- dbConnect(drv, dbname = "postgres",password="1way.Street",
                         host = "localhost", port = 5432,
                         user = "postgres")
 
-perfectDriverSession = 390
+perfectDriverSession = 392
 
 
 shinyServer(function(input, output, session) {
@@ -233,40 +233,40 @@ shinyServer(function(input, output, session) {
   
  output$timeSector1_1st <- renderText({
    sector_data <- get_sector_data(session_data_pos_PDriver, 500, 900)
-   td <-seconds_to_period(max(sector_data$currenttime,na.rm=TRUE))
+   td <-seconds_to_period(max(sector_data$currenttime,na.rm=TRUE) - min(sector_data$currenttime,na.rm=TRUE))
    sprintf('%s', td)
  })
   
  output$timeSector1_2nd <- renderText({
-
+   session_data_pos_2nd <- get_car_full_data(connection, input$session_id_2nd)
    sector_data <- get_sector_data(session_data_pos_2nd, 500, 900)
-   td <- seconds_to_period(max(sector_data$currenttime,na.rm=TRUE))
+   td <- seconds_to_period(max(sector_data$currenttime,na.rm=TRUE) - min(sector_data$currenttime,na.rm=TRUE))
    sprintf('%s', td)
  })
 
  output$timeSector2_1st <- renderText({
    sector_data <- get_sector_data(session_data_pos_PDriver, 900, 1240)
-   td <-seconds_to_period(max(sector_data$currenttime,na.rm=TRUE))
+   td <-seconds_to_period(max(sector_data$currenttime,na.rm=TRUE) - min(sector_data$currenttime,na.rm=TRUE))
    sprintf('%s', td)
  })
 
  output$timeSector2_2nd <- renderText({
    session_data_pos <- get_car_time_data(connection, input$session_id_2nd)
    sector_data <- get_sector_data(session_data_pos, 900, 1240)
-   td <- seconds_to_period(max(sector_data$currenttime,na.rm=TRUE))
+   td <- seconds_to_period(max(sector_data$currenttime,na.rm=TRUE) - min(sector_data$currenttime,na.rm=TRUE))
    sprintf('%s', td)
  })
 
  output$timeSector3_1st <- renderText({
    sector_data <- get_sector_data(session_data_pos_PDriver, 2606, 2940)
-   td <-seconds_to_period(max(sector_data$currenttime,na.rm=TRUE))
+   td <-seconds_to_period(max(sector_data$currenttime,na.rm=TRUE) - min(sector_data$currenttime,na.rm=TRUE))
    sprintf('%s', td)
  })
 
  output$timeSector3_2nd <- renderText({
    session_data_pos <- get_car_time_data(connection, input$session_id_2nd)
    sector_data <- get_sector_data(session_data_pos, 2606, 2940)
-   td <- seconds_to_period(max(sector_data$currenttime,na.rm=TRUE))
+   td <- seconds_to_period(max(sector_data$currenttime,na.rm=TRUE) - min(sector_data$currenttime,na.rm=TRUE))
   sprintf('%s', td)
  })
   
